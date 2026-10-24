@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEKO-LINK // 赛博猫咪配对终端</title>
+<style>
+  :root{
+    --cyan:#00f0ff; --pink:#ff2a6d; --purple:#b967ff;
+    --yellow:#fcee0a; --green:#39ff14; --orange:#ff9f1c;
+    --bg:#07070d; --panel:#0c0c16; --line:#1c1c2e;
+    --txt:#c8d3e0; --dim:#5a6478;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--txt);
+    font-family:"Cascadia Code","JetBrains Mono",Consolas,"Courier New",monospace;
+    overflow-x:hidden;
+  }
+  /* ---------- 背景层 ---------- */
+  #rain{position:fixed;inset:0;z-index:0;opacity:.55}
+  .scanlines{
+    position:fixed;inset:0;z-index:2;pointer-events:none;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.22) 0 1px,transparent 1px 3px);
+    mix-blend-mode:multiply;
+  }
+  .vignette{
+    position:fixed;inset:0;z-index:2;pointer-events:none;
+    background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.65) 100%);
+  }
+  .flicker{position:fixed;inset:0;z-index:2;pointer-events:none;background:rgba(120,220,255,.02);animation:flick 4s infinite steps(1)}
+  @keyframes flick{0%,100%{opacity:.4}7%{opacity:.9}8%{opacity:.2}53%{opacity:.8}54%{opacity:.3}}
+
+  /* ---------- 终端容器 ---------- */
+  .terminal{
+    position:relative;z-index:3;
+    max-width:860px;margin:4vh auto 6vh;padding:0 16px;
+  }
+  .frame{
+    background:linear-gradient(180deg,rgba(16,16,28,.92),rgba(9,9,16,.94));
+    border:1px solid var(--line);
+    box-shadow:0 0 0 1px rgba(0,240,255,.08),0 0 42px rgba(0,240,255,.07),0 0 120px rgba(255,42,109,.05);
+    clip-path:polygon(0 0,calc(100% - 22px) 0,100% 22px,100% 100%,22px 100%,0 calc(100% - 22px));
+  }
+  header.bar{
+    display:flex;justify-content:space-between;align-items:center;gap:12px;
+    padding:10px 18px;border-bottom:1px solid var(--line);
+    font-size:12px;letter-spacing:.14em;color:var(--dim);
+    background:rgba(0,240,255,.03);
+  }
+  header.bar b{color:var(--cyan);text-shadow:0 0 8px rgba(0,240,255,.6)}
+  .sig{color:var(--pink);animation:blink 1.6s infinite steps(2)}
+  @keyframes blink{50%{opacity:.25}}
+
+  .screen{display:none;padding:30px 26px 36px;min-height:480px;animation:fadein .45s ease}
+  .screen.active{display:block}
+  @keyframes fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+  /* ---------- 故障标题 ---------- */
+  .glitch{
+    position:relative;display:inline-block;
+    font-size:clamp(26px,5vw,44px);font-weight:800;letter-spacing:.06em;color:#fff;
+    text-shadow:0 0 14px rgba(0,240,255,.7);
+  }
+  .glitch::before,.glitch::after{
+    content:attr(data-text);position:absolute;inset:0;overflow:hidden;
+  }
+  .glitch::before{color:var(--pink);z-index:-1;animation:g1 2.4s infinite linear alternate-reverse}
+  .glitch::after{color:var(--cyan);z-index:-2;animation:g2 3.1s infinite linear alternate-reverse}
+  @keyframes g1{
+    0%{transform:translate(0)}15%{transform:translate(-3px,2px)}16%{transform:translate(0)}
+    55%{transform:translate(0)}56%{transform:translate(4px,-2px)}58%{transform:translate(0)}
+    82%{transform:translate(0)}83%{transform:translate(-4px,1px)}85%{transform:translate(0)}
+  }
+  @keyframes g2{
+    0%{transform:translate(0)}22%{transform:translate(3px,-1px)}24%{transform:translate(0)}
+    61%{transform:translate(0)}62%{transform:translate(-3px,2px)}64%{transform:translate(0)}
+    90%{transform:translate(0)}91%{transform:translate(3px,1px)}93%{transform:translate(0)}
+  }
+
+  /* ---------- 启动屏 ---------- */
+  #bootLog{white-space:pre-wrap;font-size:14px;line-height:1.9;color:var(--green);min-height:250px;text-shadow:0 0 6px rgba(57,255,20,.4)}
+  #bootLog .warn{color:var(--yellow)}
+  .cursor::after{content:"▌";animation:blink 1s infinite steps(2);color:var(--green)}
+
+  .btn{
+    display:inline-block;margin-top:26px;padding:13px 34px;cursor:pointer;
+    font:inherit;font-weight:700;font-size:15px;letter-spacing:.22em;
+    color:var(--cyan);background:rgba(0,240,255,.06);
+    border:1px solid var(--cyan);position:relative;
+    clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,12px 100%,0 calc(100% - 12px));
+    text-shadow:0 0 8px rgba(0,240,255,.8);
+    box-shadow:0 0 18px rgba(0,240,255,.25),inset 0 0 14px rgba(0,240,255,.08);
+    transition:.18s;
+  }
+  .btn:hover{background:rgba(0,240,255,.18);box-shadow:0 0 30px rgba(0,240,255,.5),inset 0 0 20px rgba(0,240,255,.15);transform:translateY(-2px)}
+  .btn.pink{color:var(--pink);border-color:var(--pink);background:rgba(255,42,109,.06);text-shadow:0 0 8px rgba(255,42,109,.8);box-shadow:0 0 18px rgba(255,42,109,.25)}
+  .btn.pink:hover{background:rgba(255,42,109,.18);box-shadow:0 0 30px rgba(255,42,109,.5)}
+  .btn:disabled{opacity:.35;cursor:not-allowed;transform:none}
+  .hidden{display:none!important}
+
+  /* ---------- 问答屏 ---------- */
+  .qmeta{display:flex;justify-content:space-between;font-size:12px;color:var(--dim);letter-spacing:.2em;margin-bottom:8px}
+  .qbar{height:6px;background:var(--line);margin-bottom:26px;position:relative;overflow:hidden}
+  .qbar i{position:absolute;inset:0;transform-origin:left;background:linear-gradient(90deg,var(--cyan),var(--pink));box-shadow:0 0 12px rgba(0,240,255,.6);transition:transform .4s ease}
+  .qtext{font-size:clamp(18px,3vw,24px);font-weight:700;color:#fff;margin-bottom:26px;line-height:1.5;text-shadow:0 0 10px rgba(182,103,255,.5)}
+  .qtext::before{content:"> ";color:var(--purple)}
+  .opt{
+    display:block;width:100%;text-align:left;margin-bottom:14px;padding:16px 18px;cursor:pointer;
+    font:inherit;font-size:15px;color:var(--txt);
+    background:rgba(255,255,255,.02);border:1px solid var(--line);
+    transition:.15s;position:relative;
+  }
+  .opt b{color:var(--yellow);margin-right:12px}
+  .opt::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:transparent;transition:.15s}
+  .opt:hover{border-color:var(--cyan);background:rgba(0,240,255,.06);transform:translateX(6px);color:#fff}
+  .opt:hover::before{background:var(--cyan);box-shadow:0 0 10px var(--cyan)}
+  .opt.picked{border-color:var(--pink);background:rgba(255,42,109,.14);color:#fff}
+
+  /* ---------- 分析屏 ---------- */
+  #analyzing{text-align:center}
+  .radar{
+    width:190px;height:190px;margin:26px auto;position:relative;border-radius:50%;
+    border:1px solid rgba(0,240,255,.35);
+    background:
+      radial-gradient(circle,transparent 30%,rgba(0,240,255,.05) 31%,transparent 32%),
+      radial-gradient(circle,transparent 60%,rgba(0,240,255,.08) 61%,transparent 62%),
+      radial-gradient(circle,rgba(0,240,255,.1) 0 2px,transparent 3px);
+    overflow:hidden;
+  }
+  .radar::before{
+    content:"";position:absolute;inset:0;border-radius:50%;
+    background:conic-gradient(from 0deg,rgba(0,240,255,.55),transparent 25%);
+    animation:spin 1.4s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .radar span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:56px;filter:drop-shadow(0 0 12px rgba(0,240,255,.8));animation:blink 1s infinite steps(2)}
+  #scanLog{text-align:left;max-width:480px;margin:0 auto;font-size:13px;line-height:2;color:var(--cyan);min-height:150px;white-space:pre-wrap}
+
+  /* ---------- 结果屏 ---------- */
+  .matchHead{text-align:center;margin-bottom:6px;font-size:13px;letter-spacing:.3em;color:var(--dim)}
+  .matchHead em{display:block;font-style:normal;font-size:clamp(22px,4vw,32px);font-weight:800;letter-spacing:.1em;color:var(--green);text-shadow:0 0 16px rgba(57,255,20,.7);margin-top:6px}
+  .matchHead em.hiddenCat{color:var(--yellow);text-shadow:0 0 18px rgba(252,238,10,.85)}
+  .card{
+    margin-top:22px;display:grid;grid-template-columns:280px 1fr;gap:26px;align-items:start;
+    border:1px solid var(--accent,#00f0ff);padding:22px;position:relative;
+    background:linear-gradient(160deg,rgba(255,255,255,.03),transparent 40%);
+    box-shadow:0 0 34px rgba(0,240,255,.18),inset 0 0 30px rgba(0,0,0,.4);
+  }
+  .card::before{
+    content:"NEKO-ID VERIFIED";position:absolute;top:-9px;left:16px;padding:0 8px;font-size:10px;letter-spacing:.3em;
+    background:var(--panel);color:var(--accent,#00f0ff);
+  }
+  .catimg{position:relative;aspect-ratio:1/1;border:1px solid var(--accent,#00f0ff);overflow:hidden;background:#000}
+  .catimg img{width:100%;height:100%;object-fit:cover;display:block;animation:imgin 1s ease}
+  @keyframes imgin{from{opacity:0;filter:saturate(3) blur(6px)}to{opacity:1;filter:saturate(1.1)}}
+  .catimg::after{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0 1px,transparent 1px 3px);
+  }
+  .fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:110px;background:radial-gradient(circle,#141428,#050508)}
+  .catname{font-size:26px;font-weight:800;color:#fff;letter-spacing:.04em}
+  .catname small{display:block;font-size:12px;color:var(--accent,#00f0ff);letter-spacing:.28em;margin-top:5px}
+  .matchrate{margin:16px 0 4px;font-size:13px;color:var(--dim);letter-spacing:.15em}
+  .matchrate b{font-size:42px;color:var(--accent,#00f0ff);text-shadow:0 0 18px rgba(0,240,255,.5);margin-right:4px}
+  .stats{margin-top:14px}
+  .stat{display:grid;grid-template-columns:64px 1fr 34px;gap:10px;align-items:center;font-size:12px;color:var(--dim);margin-bottom:7px}
+  .stat .track{height:7px;background:var(--line);overflow:hidden}
+  .stat .fill{height:100%;width:0;background:var(--accent,#00f0ff);box-shadow:0 0 10px rgba(0,240,255,.5);transition:width 1s cubic-bezier(.2,.8,.2,1)}
+  .stat i{font-style:normal;color:var(--txt);text-align:right}
+  .catdesc{margin-top:16px;font-size:13.5px;line-height:1.9;color:var(--txt)}
+  .catquote{margin-top:12px;padding:10px 14px;border-left:3px solid var(--accent,#00f0ff);font-size:13px;color:var(--yellow);background:rgba(252,238,10,.04)}
+  .resultBtns{margin-top:24px;display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
+  #toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);z-index:9;padding:10px 22px;font-size:13px;letter-spacing:.1em;color:var(--green);background:rgba(5,20,10,.92);border:1px solid var(--green);box-shadow:0 0 20px rgba(57,255,20,.35);opacity:0;pointer-events:none;transition:.3s}
+  #toast.show{opacity:1}
+
+  /* ---------- 图鉴屏 ---------- */
+  .dexGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:20px 0 8px}
+  .dexCell{border:1px solid var(--line);padding:10px;text-align:center;background:rgba(255,255,255,.02);transition:.2s}
+  .dexCell .thumb{aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;font-size:52px;background:#000;overflow:hidden;border:1px solid var(--line)}
+  .dexCell .thumb img{width:100%;height:100%;object-fit:cover}
+  .dexCell .dn{font-size:12px;margin-top:8px;color:#fff;font-weight:700}
+  .dexCell .dt{font-size:10px;color:var(--dim);margin-top:4px;line-height:1.6;min-height:32px}
+  .dexCell.unlocked{border-color:var(--ac);box-shadow:0 0 14px rgba(0,240,255,.15)}
+  @media (max-width:680px){.dexGrid{grid-template-columns:repeat(2,1fr)}}
+
+  @media (max-width:680px){
+    .card{grid-template-columns:1fr}
+    .catimg{max-width:300px;margin:0 auto}
+  }
+</style>
+</head>
+<body>
+<canvas id="rain"></canvas>
+<div class="scanlines"></div>
+<div class="vignette"></div>
+<div class="flicker"></div>
+
+<div class="terminal">
+  <div class="frame">
+    <header class="bar">
+      <span id="logoBtn" style="cursor:pointer" title=""><b>NEKO-LINK</b>_v2.077 // 夜之城猫咪配对终端</span>
+      <span id="clock">--:--:--</span>
+      <span class="sig">信号: 微弱</span>
+    </header>
+
+    <!-- 启动屏 -->
+    <section id="boot" class="screen active">
+      <div id="bootLog" class="cursor"></div>
+      <button id="enterBtn" class="btn hidden">▶ 接入终端</button>
+      <button id="dexBtn" class="btn pink hidden" style="margin-left:12px">▦ 全猫图鉴</button>
+    </section>
+
+    <!-- 问答屏 -->
+    <section id="quiz" class="screen">
+      <div class="qmeta"><span id="qstep">QUERY 01/10</span><span>神经波长采集中…</span></div>
+      <div class="qbar"><i id="qprog" style="transform:scaleX(.1)"></i></div>
+      <div id="qtext" class="qtext"></div>
+      <div id="qopts"></div>
+    </section>
+
+    <!-- 分析屏 -->
+    <section id="analyzing" class="screen">
+      <div class="glitch" data-text="ANALYZING">ANALYZING</div>
+      <div class="radar"><span>🐱</span></div>
+      <div id="scanLog"></div>
+    </section>
+
+    <!-- 结果屏 -->
+    <section id="result" class="screen">
+      <div class="matchHead"><span id="matchTag">// MATCH COMPLETE //</span><em id="matchTitle">配对成功</em></div>
+      <div class="card" id="card">
+        <div class="catimg" id="catImg"></div>
+        <div>
+          <div class="catname" id="catName"></div>
+          <div class="matchrate">灵魂匹配度 <b id="matchNum">0</b>%</div>
+          <div class="stats" id="stats"></div>
+          <p class="catdesc" id="catDesc"></p>
+          <div class="catquote" id="catQuote"></div>
+        </div>
+      </div>
+      <div class="resultBtns">
+        <button class="btn pink" id="retryBtn">↻ 重新连接</button>
+        <button class="btn" id="imgBtn">▤ 下载分享图</button>
+        <button class="btn" id="shareBtn">⧉ 复制结果文字</button>
+      </div>
+    </section>
+    <!-- 图鉴屏 -->
+    <section id="dex" class="screen">
+      <div class="qmeta"><span>CAT-DEX // 全猫图鉴</span><span id="dexCount">0/8 已解锁</span></div>
+      <div class="dexGrid" id="dexGrid"></div>
+      <div style="text-align:center"><button class="btn pink" id="dexBack">← 返回终端</button></div>
+    </section>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ================= 数据 ================= */
+const CATS = {
+  shadow:{
+    name:"暗影 SHADOW-9", title:"潜行黑客 · 前企业数据窃贼", emoji:"🐈‍⬛", accent:"#39ff14",
+    img:"img/shadow.png",
+    stats:{攻击:60,敏捷:95,黑客:99,魅力:70,毛量:80},
+    desc:"全城最贵的数据它都摸过——包括你昨晚删除的浏览记录。别问了,它不会承认的。它选择你,是因为你的设备密码最好猜。",
+    quote:"「你的防火墙,在我眼里是猫爬架。」"
+  },
+  pulse:{
+    name:"脉冲 PULSE", title:"低音炮DJ · 地下夜店常驻", emoji:"🎧", accent:"#ff2a6d",
+    img:"img/pulse.png",
+    stats:{攻击:70,敏捷:80,黑客:60,魅力:95,毛量:75},
+    desc:"夜之城地下夜店「猫薄荷」的头牌DJ。它的呼噜声采样自低音炮——或者反过来。它认定你的心跳频率就是最佳BPM。",
+    quote:"「把音量开到最大,烦恼就追不上我。」"
+  },
+  chrome:{
+    name:"铬拳 CHROME", title:"义体武士 · 退役安保队长", emoji:"⚔️", accent:"#00f0ff",
+    img:"img/chrome.png",
+    stats:{攻击:98,敏捷:85,黑客:50,魅力:65,毛量:60},
+    desc:"前巨型企业安保部队长,左前爪为军用级铬合金义体。退役原因:把上司的定制沙发抓烂了。它决定从今天起当你的贴身护卫。",
+    quote:"「我的义爪从不出鞘——除非你有罐头。」"
+  },
+  glitch:{
+    name:"故障 GLITCH.EXE", title:"数据幽灵 · 来历不明", emoji:"👾", accent:"#b967ff",
+    img:"img/glitch.png",
+    stats:{攻击:55,敏捷:99,黑客:92,魅力:88,毛量:42},
+    desc:"没人知道它是猫变成了数据,还是数据以为自己成了猫。每周三会卡进墙里一次,捞它需要重启路由器。它说它在你梦里见过你。",
+    quote:"「01001110 01111001 01100001(翻译:喵)」"
+  },
+  neon:{
+    name:"霓酱 NEON-CHAN", title:"全息偶像 · 三百万粉丝", emoji:"🎤", accent:"#ff71ce",
+    img:"img/neon.png",
+    stats:{攻击:50,敏捷:75,黑客:65,魅力:99,毛量:95},
+    desc:"拥有三百万粉丝的全息偶像猫。打榜数据有47%是它自己用肉垫刷的。它选中你担任「头号经纪人兼首席铲屎官」。",
+    quote:"「今天的霓酱也是满电状态喵~」"
+  },
+  rust:{
+    name:"锈锈 RUST", title:"废土拾荒者 · 情报贩子", emoji:"🔧", accent:"#ff9f1c",
+    img:"img/rust.png",
+    stats:{攻击:75,敏捷:88,黑客:55,魅力:60,毛量:70},
+    desc:"在垃圾山里长大,能用三个瓶盖换到全城任何情报。右后腿的弹簧是它自己捡的,跑起来会发出可爱的吱呀声。它觉得你看起来很好骗,决定赖上你。",
+    quote:"「你的垃圾是我的宝藏。顺便,有吃的吗?」"
+  },
+  /* ---------- 隐藏款(不走常规计分,靠特殊条件触发) ---------- */
+  boss:{
+    hidden:true,
+    name:"罐头 BOSS-07", title:"企业总裁 · 罐头资本家", emoji:"👑", accent:"#fcee0a",
+    img:"img/boss.png",
+    stats:{攻击:40,敏捷:30,黑客:75,魅力:85,毛量:99},
+    desc:"前罐头集团CEO,退休原因是董事会发现它把公司金枪鱼储备吃光了。如今靠收租为生——三条街的猫爬架都是它的产业。它相中了你对「搞钱和干饭」的纯粹理解。",
+    quote:"「爱情和罐头,我选罐头。你可以排在罐头后面。」"
+  },
+  zero:{
+    hidden:true,
+    name:"零点 ZERO", title:"传说猫王 · 未注册个体", emoji:"🌑", accent:"#e8f4ff",
+    img:"img/zero.png",
+    stats:{攻击:90,敏捷:99,黑客:95,魅力:90,毛量:88},
+    desc:"数据库里查无此猫。9,000,000 只注册猫咪同时否认认识它,但监控显示它们每周四深夜都去天台聚会。只有灵魂频率完全均衡的稀有个体才能侦测到它——比如你。",
+    quote:"「我不是系统的一员。系统是我的一员。」"
+  }
+};
+
+/* 10 道情景剧题,选项本身即梗;权重暗中加分 */
+const QUESTIONS = [
+  { q:"午夜,你的义眼收到匿名消息:「我知道你家猫昨晚干了什么。」你回:",
+    opts:[
+      ["「说。顺便,你的防火墙该换了。」", {shadow:2, glitch:1}],
+      ["「它去夜店了对吧,DJ台第三排就是我」", {pulse:2,  neon:1}],
+      ["不回。起身检查门窗和武器。",       {chrome:2, rust:1}]
+    ]},
+  { q:"黑市医生推销「军用级猫薄荷吸入器」,副作用是看见红色激光点会失控。你:",
+    opts:[
+      ["买!失控也是战斗力",              {chrome:2, shadow:1}],
+      ["改造成舞台烟雾机,全场一起嗨",    {neon:2,   pulse:1}],
+      ["不买,但顺走了试用装",            {rust:2,   glitch:1}]
+    ]},
+  { q:"你捡到的芯片里是企业高层的加密账本。最稳妥的发财路径:",
+    opts:[
+      ["全部破解,勒索信写得优雅一点",    {glitch:2, shadow:1}],
+      ["直接卖给对家公司,现金,今晚加餐", {rust:2,   chrome:1}],
+      ["匿名曝光,然后开直播吃瓜",        {neon:2,   pulse:1}]
+    ]},
+  { q:"帮派火并,流弹打碎了你家窗户。第一反应:",
+    opts:[
+      ["抄起家伙下楼理论",              {chrome:2, pulse:1}],
+      ["黑进他们的对讲机,循环播放猫叫",  {shadow:2, glitch:1}],
+      ["先拍照——这光线构图绝了",        {neon:2,   rust:1}]
+    ]},
+  { q:"全城大停电第 3 天,最让你崩溃的是:",
+    opts:[
+      ["备用电池只够一台设备在线",       {glitch:2, shadow:1}],
+      ["没有音乐,世界安静得可怕",        {pulse:2,  neon:1}],
+      ["冰箱里的罐头见底了",            {rust:2,   chrome:1}]
+    ]},
+  { q:"你的加密频道签名是:",
+    opts:[
+      ["「已读不回是基本礼仪」",          {shadow:2, glitch:1}],
+      ["「在吗?在嗨!」",                 {pulse:2,  neon:1}],
+      ["空白。职业习惯。",               {chrome:2, rust:1}]
+    ]},
+  { q:"房东的无人机又来催租,你:",
+    opts:[
+      ["用晾衣杆和胶带自制反无人机装置",  {rust:2,   shadow:1}],
+      ["黑进它,让它循环广播「本月免租」", {glitch:2, pulse:1}],
+      ["付不起,但请它看了场天台日落",    {neon:2,   chrome:1}]
+    ]},
+  { q:"买外套的第一标准:",
+    opts:[
+      ["十二个暗袋,能装一整套工具",      {chrome:2, rust:1}],
+      ["光纤面料,走夜路自带应援色",      {neon:2,   pulse:1}],
+      ["耐脏,垃圾山里打滚三年不用洗",    {rust:2,   shadow:1}]
+    ]},
+  { q:"猫咪统治世界后,你应聘:",
+    opts:[
+      ["首席情报官",                    {shadow:2, glitch:1}],
+      ["娱乐部长",                      {pulse:2,  neon:1}],
+      ["粮食部长(手握罐头分配权)",       {rust:2,   chrome:1}]
+    ]},
+  { q:"义体医生免费送你一个能力,你选:",
+    opts:[
+      ["光学迷彩,来去无踪",              {shadow:2, glitch:1}],
+      ["相位瞬移,不错过任何开场",        {glitch:2, pulse:1}],
+      ["永动核心,嗨到天亮",              {pulse:2,  chrome:1}]
+    ]}
+];
+
+const BOOT_LINES = [
+  "NEKO-LINK BIOS v2.077 启动中...",
+  "校验神经元接口............. OK",
+  "加载猫咪数据库 [9,000,000 只]... OK(另检出未注册信号 ×2)",
+  "连接夜之城宠物管理局....... 失败(该局已倒闭 6 年)",
+  "切换至地下配对信道......... OK",
+  "系统就绪。",
+  "⚠ 警告:本终端不保证猫咪会理你"
+];
+const SCAN_LINES = [
+  "> 捕获你的性格波长......... 完成",
+  "> 解析夜生活模式........... 完成",
+  "> 正在黑入猫咪数据库....... 绕过防火墙",
+  "> 比对呼噜频率............. 9,000,000 只已扫描",
+  "> 检索隐藏频段............. ???",
+  "> 建立心灵链接............. OK"
+];
+
+/* ================= 背景:猫咪字符雨 ================= */
+(function(){
+  const cv=document.getElementById("rain"),cx=cv.getContext("2d");
+  const CH="01猫ネコﾆｬｰNEKO$#".split("");
+  let W,H,cols,drops;
+  function init(){W=cv.width=innerWidth;H=cv.height=innerHeight;cols=Math.floor(W/18);drops=Array(cols).fill(0).map(()=>Math.random()*H/18|0)}
+  init();addEventListener("resize",init);
+  setInterval(()=>{
+    cx.fillStyle="rgba(7,7,13,.14)";cx.fillRect(0,0,W,H);
+    cx.font="14px monospace";
+    for(let i=0;i<cols;i++){
+      cx.fillStyle=Math.random()<.03?"rgba(255,42,109,.5)":"rgba(0,240,255,.28)";
+      cx.fillText(CH[Math.random()*CH.length|0],i*18,drops[i]*18);
+      if(drops[i]*18>H&&Math.random()>.975)drops[i]=0;
+      drops[i]++;
+    }
+  },90);
+})();
+
+/* ================= 时钟 ================= */
+setInterval(()=>{document.getElementById("clock").textContent=new Date().toLocaleTimeString("zh-CN",{hour12:false})},1000);
+
+/* ================= 工具 ================= */
+const $=id=>document.getElementById(id);
+function show(id){document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));$(id).classList.add("active")}
+function typeLines(el,lines,done){
+  el.innerHTML="";let li=0;
+  (function nextLine(){
+    if(li>=lines.length){done&&done();return}
+    const line=lines[li++],div=document.createElement("div");
+    if(line.startsWith("⚠"))div.className="warn";
+    el.appendChild(div);let ci=0;
+    const t=setInterval(()=>{
+      div.textContent=line.slice(0,++ci);
+      if(ci>=line.length){clearInterval(t);setTimeout(nextLine,160)}
+    },14);
+  })();
+}
+function toast(msg){const t=$("toast");t.textContent=msg;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200)}
+
+/* 预加载猫咪图片与二维码 */
+Object.values(CATS).forEach(c=>{const i=new Image();i.src=c.img});
+const qrImg=new Image();qrImg.src="img/qr.png";
+
+/* ================= 流程 ================= */
+let scores,answers,qi;
+typeLines($("bootLog"),BOOT_LINES,()=>{$("enterBtn").classList.remove("hidden");$("dexBtn").classList.remove("hidden")});
+
+/* ================= 全猫图鉴(localStorage 收集) ================= */
+const DEX_KEY="nekoDex";
+const getDex=()=>{try{return JSON.parse(localStorage.getItem(DEX_KEY))||[]}catch(e){return[]}};
+const saveDex=k=>{const d=getDex();if(!d.includes(k)){d.push(k);try{localStorage.setItem(DEX_KEY,JSON.stringify(d))}catch(e){}}};
+const DEX_HINTS={
+  shadow:"传闻它从不联网——它就是网。",
+  pulse:"跟着低音走。",
+  chrome:"它的爪子只在罐头面前出鞘。",
+  glitch:"每周三,墙里会传出猫叫。",
+  neon:"为最闪的那束光打榜。",
+  rust:"带空罐头瓶去垃圾山碰碰运气。",
+  boss:"财迷 × 干饭,缺一不可。",
+  zero:"均衡,存乎万物之间。"
+};
+function renderDex(){
+  const owned=getDex();
+  $("dexCount").textContent=owned.length+"/"+Object.keys(CATS).length+" 已解锁";
+  const g=$("dexGrid");g.innerHTML="";
+  Object.entries(CATS).forEach(([k,c])=>{
+    const has=owned.includes(k);
+    const cell=document.createElement("div");
+    cell.className="dexCell"+(has?" unlocked":"");
+    if(has)cell.style.setProperty("--ac",c.accent);
+    cell.innerHTML='<div class="thumb">'
+      +(has?'<img src="'+c.img+'" alt="'+c.name+'">':'<span style="filter:brightness(0);opacity:.4">'+c.emoji+'</span>')
+      +'</div><div class="dn">'+(has?c.name:"???")+'</div><div class="dt">'
+      +(has?c.title:DEX_HINTS[k])+'</div>';
+    g.appendChild(cell);
+  });
+}
+$("dexBtn").onclick=()=>{renderDex();show("dex")};
+$("dexBack").onclick=()=>show("boot");
+/* 彩蛋:连点 logo 5 次直达图鉴 */
+let logoClicks=0,logoTimer;
+$("logoBtn").onclick=()=>{
+  logoClicks++;clearTimeout(logoTimer);
+  logoTimer=setTimeout(()=>logoClicks=0,1200);
+  if(logoClicks>=5){logoClicks=0;renderDex();show("dex");toast("▦ CAT-DEX 已解锁")}
+};
+
+function resetRun(){
+  scores={};Object.keys(CATS).forEach(k=>scores[k]=0);
+  answers=[];qi=0;
+}
+$("enterBtn").onclick=()=>{resetRun();show("quiz");renderQ()};
+
+function renderQ(){
+  const q=QUESTIONS[qi];
+  $("qstep").textContent="QUERY "+String(qi+1).padStart(2,"0")+"/"+QUESTIONS.length;
+  $("qprog").style.transform="scaleX("+((qi+1)/QUESTIONS.length)+")";
+  $("qtext").textContent=q.q;
+  const box=$("qopts");box.innerHTML="";
+  q.opts.forEach((o,idx)=>{
+    const b=document.createElement("button");b.className="opt";
+    b.innerHTML="<b>["+String.fromCharCode(65+idx)+"]</b>"+o[0];
+    b.onclick=()=>{
+      b.classList.add("picked");
+      answers[qi]=idx;
+      Object.entries(o[1]).forEach(([k,v])=>scores[k]+=v);
+      setTimeout(()=>{
+        qi++;
+        qi<QUESTIONS.length?renderQ():analyze();
+      },380);
+    };
+    box.appendChild(b);
+  });
+}
+
+function analyze(){
+  show("analyzing");
+  typeLines($("scanLog"),SCAN_LINES,()=>setTimeout(renderResult,700));
+}
+
+/* 隐藏触发:
+   - 罐头 BOSS-07:第3题选「卖掉换钱」(idx1) 且 第5题选「饿肚子」(idx2) —— 财迷+干饭魂
+   - 零点 ZERO:所有猫咪得分极差 ≤3 —— 灵魂频率完全均衡的稀有个体 */
+function pickWinnerKey(){
+  if(answers[2]===1 && answers[4]===2) return "boss";
+  let max=-1,min=Infinity,pool=[];
+  Object.entries(scores).forEach(([k,v])=>{
+    if(v>max){max=v;pool=[k]}else if(v===max)pool.push(k);
+    if(v<min)min=v;
+  });
+  if(max-min<=3) return "zero";
+  return pool[Math.random()*pool.length|0];
+}
+
+let currentKey,currentMatch;
+
+function renderResult(){
+  show("result");
+  currentKey=pickWinnerKey();
+  const cat=CATS[currentKey];
+  const match=Math.min(99,86+Math.round(scores[currentKey]*0.7)+(Math.random()*4|0));
+  currentMatch=match;
+  saveDex(currentKey);
+  $("card").style.setProperty("--accent",cat.accent);
+  /* 隐藏款标题 */
+  $("matchTag").textContent=cat.hidden?"// HIDDEN NEKO DETECTED //":"// MATCH COMPLETE //";
+  $("matchTitle").textContent=cat.hidden?"隐藏款解锁":"配对成功";
+  $("matchTitle").classList.toggle("hiddenCat",!!cat.hidden);
+  /* 图片 + 失败兜底 */
+  const box=$("catImg");box.innerHTML="";
+  const fb=document.createElement("div");fb.className="fallback";fb.textContent=cat.emoji;
+  const img=new Image();img.alt=cat.name;
+  img.onload=()=>{box.innerHTML="";box.appendChild(img)};
+  img.onerror=()=>{};
+  img.src=cat.img;box.appendChild(fb);
+  /* 文字 */
+  $("catName").innerHTML=cat.name+"<small>"+cat.title+"</small>";
+  $("catDesc").textContent=cat.desc;
+  $("catQuote").textContent=cat.quote;
+  /* 属性条 */
+  const st=$("stats");st.innerHTML="";
+  Object.entries(cat.stats).forEach(([k,v],i)=>{
+    const row=document.createElement("div");row.className="stat";
+    row.innerHTML="<span>"+k+"</span><div class='track'><div class='fill'></div></div><i>"+v+"</i>";
+    st.appendChild(row);
+    setTimeout(()=>row.querySelector(".fill").style.width=v+"%",120+i*130);
+  });
+  /* 匹配度数字滚动 */
+  const numEl=$("matchNum");let n=0;
+  const t=setInterval(()=>{numEl.textContent=++n;if(n>=match)clearInterval(t)},26);
+}
+
+/* ================= 分享图(Canvas 手绘,900x1280 竖版) ================= */
+function drawShare(){
+  const cat=CATS[currentKey],match=currentMatch;
+  if(!cat){toast("先完成一次配对");return}
+  toast("正在生成分享图…");
+  const W=900,H=1280,cv=document.createElement("canvas");cv.width=W;cv.height=H;
+  const g=cv.getContext("2d"),A=cat.accent;
+  /* 背景与网格 */
+  g.fillStyle="#07070d";g.fillRect(0,0,W,H);
+  g.strokeStyle="rgba(0,240,255,.06)";g.lineWidth=1;
+  for(let x=0;x<=W;x+=45){g.beginPath();g.moveTo(x,0);g.lineTo(x,H);g.stroke()}
+  for(let y=0;y<=H;y+=45){g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.stroke()}
+  /* 四角标记 */
+  g.strokeStyle=A;g.lineWidth=4;
+  [[24,24,1,1],[W-24,24,-1,1],[24,H-24,1,-1],[W-24,H-24,-1,-1]].forEach(([x,y,dx,dy])=>{
+    g.beginPath();g.moveTo(x+dx*44,y);g.lineTo(x,y);g.lineTo(x,y+dy*44);g.stroke();
+  });
+  /* 头部 */
+  g.textBaseline="alphabetic";
+  g.fillStyle="#5a6478";g.font="20px monospace";g.textAlign="left";
+  g.fillText("NEKO-LINK_v2.077 // 夜之城猫咪配对终端",50,66);
+  g.fillStyle=A;g.textAlign="right";
+  g.fillText(cat.hidden?"HIDDEN NEKO":"MATCH COMPLETE",W-50,66);
+  g.strokeStyle="rgba(255,255,255,.15)";g.lineWidth=1;
+  g.beginPath();g.moveTo(50,88);g.lineTo(W-50,88);g.stroke();
+  /* 标题 */
+  g.textAlign="center";
+  g.shadowColor=A;g.shadowBlur=32;
+  g.fillStyle=A;g.font="bold 58px 'Microsoft YaHei',monospace";
+  g.fillText(cat.hidden?"隐 藏 款 解 锁":"配 对 成 功",W/2,164);
+  g.shadowBlur=0;
+  /* 猫图边框(图稍后异步画入) */
+  g.strokeStyle=A;g.lineWidth=3;g.strokeRect(210,208,480,480);
+  /* 名字/称号 */
+  g.fillStyle="#fff";g.font="bold 46px 'Microsoft YaHei',monospace";
+  g.fillText(cat.name,W/2,764);
+  g.fillStyle=A;g.font="22px 'Microsoft YaHei',monospace";
+  g.fillText(cat.title,W/2,806);
+  /* 匹配度 */
+  g.fillStyle="#5a6478";g.font="20px 'Microsoft YaHei',monospace";
+  g.fillText("灵 魂 匹 配 度",W/2,858);
+  g.shadowColor=A;g.shadowBlur=26;
+  g.fillStyle=A;g.font="bold 76px 'Microsoft YaHei',monospace";
+  g.fillText(match+"%",W/2,938);
+  g.shadowBlur=0;
+  /* 属性条 */
+  const keys=Object.keys(cat.stats);let y=986;
+  keys.forEach(k=>{
+    const v=cat.stats[k];
+    g.fillStyle="#5a6478";g.font="20px 'Microsoft YaHei',monospace";g.textAlign="left";
+    g.fillText(k,180,y+8);
+    g.fillStyle="#1c1c2e";g.fillRect(270,y-8,360,12);
+    g.fillStyle=A;g.fillRect(270,y-8,360*v/100,12);
+    g.fillStyle="#c8d3e0";g.textAlign="right";g.fillText(String(v),700,y+8);
+    g.textAlign="center";y+=40;
+  });
+  /* 口头禅(自动换行) */
+  g.fillStyle="#fcee0a";g.font="italic 22px 'Microsoft YaHei',monospace";
+  let line="",qy=y+16;
+  for(const ch of cat.quote){
+    if(g.measureText(line+ch).width>720){g.fillText(line,W/2,qy);line=ch;qy+=32}
+    else line+=ch;
+  }
+  if(line)g.fillText(line,W/2,qy);
+  /* footer */
+  g.fillStyle="#5a6478";g.font="16px monospace";
+  g.fillText("本结果由 9,000,000 只注册猫咪联合认证 · 最终解释权归猫所有",W/2,1240);
+
+  /* 猫图 + 二维码:两张都落地(或超时)后才导出,避免二维码被静默跳过 */
+  let done=false,pending=2;
+  const exportPNG=()=>{
+    if(done)return;done=true;
+    try{
+      cv.toBlob(b=>{
+        const a=document.createElement("a");
+        a.href=URL.createObjectURL(b);
+        a.download="neko-link-"+cat.name.replace(/\s+/g,"_")+".png";
+        a.click();
+        setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+        toast("✓ 分享图已下载,快去晒猫");
+      });
+    }catch(e){
+      toast("⚠ 当前打开方式无法导出,请用本地服务器访问");
+    }
+  };
+  const tryExport=()=>{if(--pending<=0)exportPNG()};
+  /* 本地猫图,同源无污染,直接画进画布 */
+  const img=new Image();
+  img.onload=()=>{g.drawImage(img,213,211,474,474);tryExport()};
+  img.onerror=()=>{g.font="220px serif";g.textAlign="center";g.fillText(cat.emoji,W/2,480);tryExport()};
+  img.src=cat.img;
+  /* 二维码(右下角)+引导语 */
+  const qr=new Image();
+  qr.onload=()=>{
+    g.drawImage(qr,W-156,H-300,110,110);
+    g.fillStyle="#5a6478";g.font="15px monospace";g.textAlign="right";
+    g.fillText("扫码领养你的猫 →",W-172,H-138);
+    g.textAlign="center";tryExport();
+  };
+  qr.onerror=()=>tryExport();
+  qr.src="img/qr.png";
+  setTimeout(()=>{if(!done)exportPNG()},6000);
+}
+$("imgBtn").onclick=drawShare;
+
+/* 复制结果文字 */
+$("shareBtn").onclick=async()=>{
+  const cat=CATS[currentKey];
+  if(!cat)return;
+  const txt="【NEKO-LINK 配对结果】我的命中猫咪是「"+cat.name+"」"+cat.title+",灵魂匹配度 "+currentMatch+"%。"+cat.quote;
+  try{await navigator.clipboard.writeText(txt);toast("✓ 结果已复制,快去粘贴炫耀")}
+  catch(e){toast("复制失败,手动截图也一样帅")}
+};
+
+$("retryBtn").onclick=()=>{resetRun();show("quiz");renderQ()};
+</script>
+</body>
+</html>
