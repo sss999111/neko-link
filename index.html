@@ -671,8 +671,9 @@ function drawShare(){
   const qr=new Image();
   qr.onload=()=>{
     g.drawImage(qr,W-156,H-300,110,110);
-    g.fillStyle="#5a6478";g.font="15px monospace";g.textAlign="right";
-    g.fillText("扫码领养你的猫 →",W-172,H-138);
+    /* 引导语放在二维码正下方居中,避开左侧属性条数值列 */
+    g.fillStyle="#5a6478";g.font="15px 'Microsoft YaHei',monospace";g.textAlign="center";
+    g.fillText("扫码领养你的猫",W-101,H-300+110+26);
     g.textAlign="center";tryExport();
   };
   qr.onerror=()=>tryExport();
