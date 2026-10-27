@@ -258,6 +258,34 @@
 <div id="toast"></div>
 
 <script>
+/* ================= 统计(GoatCounter 免费版) =================
+   注册后把 GC_SITE 改成你的站点代码,例如 "neko-link" 对应
+   https://neko-link.goatcounter.com/count ;留空则不上报任何数据 */
+const GC_SITE="neko-link";
+const GC_QUEUE=[];
+function track(ev){
+  if(!GC_SITE)return;
+  GC_QUEUE.push(ev);
+  flushTrack();
+}
+function flushTrack(){
+  if(!GC_SITE||!window.goatcounter||!window.goatcounter.count)return;
+  while(GC_QUEUE.length){
+    const ev=GC_QUEUE.shift();
+    try{window.goatcounter.count({path:"neko/"+ev,event:true})}catch(e){}
+  }
+}
+(function initStats(){
+  if(!GC_SITE)return;
+  const s=document.createElement("script");
+  s.async=true;
+  s.src="https://gc.zgo.at/count.js";
+  s.setAttribute("data-goatcounter","https://"+GC_SITE+".goatcounter.com/count");
+  s.onload=flushTrack;
+  document.head.appendChild(s);
+  if(location.search.indexOf("ref=qr")>-1)track("ref_qr");
+})();
+
 /* ================= 数据 ================= */
 const CATS = {
   shadow:{
@@ -481,7 +509,7 @@ function renderDex(){
     g.appendChild(cell);
   });
 }
-$("dexBtn").onclick=()=>{renderDex();show("dex")};
+$("dexBtn").onclick=()=>{track("dex_open");renderDex();show("dex")};
 $("dexBack").onclick=()=>show("boot");
 /* 彩蛋:连点 logo 5 次直达图鉴 */
 let logoClicks=0,logoTimer;
@@ -495,7 +523,7 @@ function resetRun(){
   scores={};Object.keys(CATS).forEach(k=>scores[k]=0);
   answers=[];qi=0;
 }
-$("enterBtn").onclick=()=>{resetRun();show("quiz");renderQ()};
+$("enterBtn").onclick=()=>{track("enter");resetRun();show("quiz");renderQ()};
 
 function renderQ(){
   const q=QUESTIONS[qi];
@@ -520,6 +548,7 @@ function renderQ(){
 }
 
 function analyze(){
+  track("quiz_complete");
   show("analyzing");
   typeLines($("scanLog"),SCAN_LINES,()=>setTimeout(renderResult,700));
 }
@@ -544,6 +573,8 @@ function renderResult(){
   show("result");
   currentKey=pickWinnerKey();
   const cat=CATS[currentKey];
+  track("result");
+  if(cat.hidden)track("hidden_unlock");
   const match=Math.min(99,86+Math.round(scores[currentKey]*0.7)+(Math.random()*4|0));
   currentMatch=match;
   saveDex(currentKey);
@@ -655,6 +686,7 @@ function drawShare(){
         a.download="neko-link-"+cat.name.replace(/\s+/g,"_")+".png";
         a.click();
         setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+        track("share_image");
         toast("✓ 分享图已下载,快去晒猫");
       });
     }catch(e){
@@ -687,11 +719,11 @@ $("shareBtn").onclick=async()=>{
   const cat=CATS[currentKey];
   if(!cat)return;
   const txt="【NEKO-LINK 配对结果】我的命中猫咪是「"+cat.name+"」"+cat.title+",灵魂匹配度 "+currentMatch+"%。"+cat.quote;
-  try{await navigator.clipboard.writeText(txt);toast("✓ 结果已复制,快去粘贴炫耀")}
+  try{await navigator.clipboard.writeText(txt);track("copy_result");toast("✓ 结果已复制,快去粘贴炫耀")}
   catch(e){toast("复制失败,手动截图也一样帅")}
 };
 
-$("retryBtn").onclick=()=>{resetRun();show("quiz");renderQ()};
+$("retryBtn").onclick=()=>{track("replay");resetRun();show("quiz");renderQ()};
 </script>
 </body>
 </html>
